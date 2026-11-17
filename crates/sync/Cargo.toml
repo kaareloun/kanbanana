@@ -1,0 +1,13 @@
+[package]
+name = "sync"
+license.workspace = true
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+chrono = "0.4.45"
+crossbeam-channel = "0.5.17"
+linear_api = { version = "0.1.0", path = "../linear_api" }
+model = { version = "0.1.0", path = "../model" }
+store = { version = "0.1.0", path = "../store" }
+thiserror = "2.0.21"
