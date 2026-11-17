@@ -1,0 +1,47 @@
+name: release
+
+# Builds the app for Linux and macOS when a version tag is pushed, for example v0.1.0,
+# and attaches the archives to a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Linux libraries for eframe
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev
+      - run: cargo build --release --locked -p kanbanana --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          name=kanbanana-${GITHUB_REF_NAME}-${{ matrix.target }}
+          mkdir -p "$name"
+          cp target/${{ matrix.target }}/release/kanbanana LICENSE README.md "$name/"
+          cp assets/kanbanana.desktop assets/brand/icon.png "$name/"
+          tar czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            kanbanana-*.tar.gz
+            kanbanana-*.tar.gz.sha256

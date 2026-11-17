@@ -1,0 +1,14 @@
+[workspace]
+resolver = "3"
+members = ["crates/model", "crates/linear_api", "crates/store", "crates/mcp", "crates/app", "crates/sync"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+
+[profile.dev]
+# Faster debug builds: optimize dependencies, keep our crates quick to compile.
+debug = 1
+[profile.dev.package."*"]
+opt-level = 2
