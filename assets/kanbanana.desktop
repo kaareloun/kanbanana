@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Kanbanana
+Comment=Kanban board for your Linear issues
+Exec=kanbanana
+Icon=kanbanana
+Terminal=false
+Categories=Development;ProjectManagement;Office;
+StartupWMClass=kanbanana

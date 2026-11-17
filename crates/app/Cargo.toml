@@ -1,0 +1,23 @@
+[package]
+name = "kanbanana"
+license.workspace = true
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+# Not used directly: turns on Wayland data-control for the arboard copy inside egui-winit,
+# so pasted images reach the app as egui PasteImage events.
+arboard = { version = "3.7.0", features = ["image-data", "wayland-data-control"] }
+chrono = "0.4.45"
+dirs = "7.0.0"
+eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "glow", "wayland", "x11", "clipboard", "links"] }
+egui_extras = { version = "0.37.0", features = ["image", "gif", "webp"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+linear_api = { version = "0.1.0", path = "../linear_api" }
+mcp = { version = "0.1.0", path = "../mcp" }
+model = { version = "0.1.0", path = "../model" }
+rfd = "0.18.0"
+serde_json = "1.0.154"
+store = { version = "0.1.0", path = "../store" }
+sync = { version = "0.1.0", path = "../sync" }

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="#191724"/>
+  <rect x="16.5" y="16.5" width="479" height="479" rx="111.5" fill="none" stroke="#26233a" stroke-width="3"/>
+  <!-- Three kanban columns with cards. -->
+  <rect x="104" y="112" width="88" height="240" rx="20" fill="#1f1d2e"/>
+  <rect x="212" y="112" width="88" height="296" rx="20" fill="#1f1d2e"/>
+  <rect x="320" y="112" width="88" height="200" rx="20" fill="#1f1d2e"/>
+  <rect x="116" y="126" width="64" height="40" rx="10" fill="#403d52"/>
+  <rect x="116" y="176" width="64" height="40" rx="10" fill="#26233a"/>
+  <rect x="224" y="126" width="64" height="40" rx="10" fill="#c4a7e7" opacity="0.85"/>
+  <rect x="224" y="176" width="64" height="40" rx="10" fill="#26233a"/>
+  <rect x="332" y="126" width="64" height="40" rx="10" fill="#9ccfd8" opacity="0.85"/>
+  <!-- The banana lies across the board. -->
+  <g transform="translate(92 104) scale(5.2)">
+    <path d="M9 41 C 18 58, 48 54, 54 22 C 54.4 20.2, 50.8 19.6, 50.2 21.4 C 46 33, 34 39.5, 16 36.5 C 11.5 35.8, 8 38.2, 9 41 Z" fill="#f6c177"/>
+    <path d="M16 36.5 C 34 39.5, 46 33, 50.2 21.4 C 49.5 31, 40 42.5, 24 42.4 C 20 42.3, 17.5 40, 16 36.5 Z" fill="#ea9d34" opacity="0.55"/>
+    <path d="M15.5 45.5 C 26 51.5, 42 48.5, 49.5 31.5" fill="none" stroke="#fbe6c2" stroke-width="1.8" stroke-linecap="round" opacity="0.85"/>
+    <path d="M50.6 21.8 L 52 13 C 52.2 11.9, 54.6 12, 54.8 13.2 L 54 22.4 Z" fill="#6e6a86"/>
+    <path d="M9 41 C 8.2 39.2, 9.6 37.6, 11.6 37.4 L 12.8 40.6 C 11.6 41.8, 9.9 42.2, 9 41 Z" fill="#524f67"/>
+  </g>
+</svg>
