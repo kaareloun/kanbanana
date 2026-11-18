@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use crossbeam_channel::{Receiver, RecvTimeoutError};
 use linear_api::Client;
-use model::{IssueChange, Source, Workspace};
+use model::{IssueChange, IssueDraft, Source, Workspace};
 use store::Db;
 
 use crate::error::{Error, Result};
@@ -83,6 +83,9 @@ fn run_without_db(rx: Receiver<Command>, shared: &Shared, message: &str) {
             Command::ChangeIssue { workspace, issue_id, .. } => {
                 Event::ChangeFailed { workspace, issue_id, message: message.clone() }
             }
+            Command::CreateIssue { workspace, request_id, .. } => {
+                Event::CreateFailed { workspace, request_id, message: message.clone() }
+            }
             Command::LoadComments { issue_id, .. } => {
                 Event::CommentsFailed { issue_id, message: message.clone() }
             }
@@ -122,6 +125,9 @@ impl Worker {
                 }
                 Command::ChangeIssue { workspace, issue_id, change } => {
                     self.change(&workspace, &issue_id, change)
+                }
+                Command::CreateIssue { workspace, request_id, draft } => {
+                    self.create(&workspace, request_id, &draft)
                 }
                 Command::LoadComments { workspace, issue_id } => {
                     self.load_comments(&workspace, &issue_id)
@@ -257,6 +263,23 @@ impl Worker {
                     eprintln!("sync: cannot restore issue {issue_id}: {e}");
                 }
                 self.board_changed(ws);
+            }
+        }
+    }
+
+    fn create(&mut self, ws: &str, request_id: u64, draft: &IssueDraft) {
+        let result = self.call(ws, |c| c.create_issue(ws, draft)).and_then(|issue| {
+            store::upsert_issues(&self.db, std::slice::from_ref(&issue))?;
+            Ok(issue)
+        });
+        match result {
+            Ok(issue) => {
+                self.emit(Event::IssueCreated { workspace: ws.to_string(), request_id, issue });
+                self.board_changed(ws);
+            }
+            Err(e) => {
+                eprintln!("sync: create in {ws} failed: {e}");
+                self.emit(Event::CreateFailed { workspace: ws.to_string(), request_id, message: e.to_string() });
             }
         }
     }

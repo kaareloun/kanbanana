@@ -113,8 +113,9 @@ pub struct Label {
 }
 
 /// Linear's priority numbers: 0 none, 1 urgent, 2 high, 3 medium, 4 low.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Priority {
+    #[default]
     None = 0,
     Urgent = 1,
     High = 2,
@@ -174,6 +175,21 @@ pub struct Issue {
     pub url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// A new issue before any backend saved it. The new issue form fills it and the engine
+/// creates the issue from it. None fields and empty lists leave the backend default.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct IssueDraft {
+    pub team_id: String,
+    pub title: String,
+    /// Markdown.
+    pub description: String,
+    pub state_id: Option<String>,
+    pub priority: Priority,
+    pub assignee_id: Option<String>,
+    pub label_ids: Vec<String>,
+    pub project_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

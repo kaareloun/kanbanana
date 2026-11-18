@@ -204,3 +204,18 @@ fn wake_runs_after_each_event() {
     assert!(wakes.load(Ordering::SeqCst) >= 1);
     engine.shutdown();
 }
+
+#[test]
+fn create_without_database_fails_with_request_id() {
+    let dir = TempDir::new();
+    std::fs::create_dir_all(&dir.0).unwrap();
+    // A file where the database folder should be, so the store cannot open.
+    let blocker = dir.0.join("file");
+    std::fs::write(&blocker, b"x").unwrap();
+    let engine = start(blocker.join("cache.sqlite3"), Box::new(|| {}));
+    let draft = IssueDraft { team_id: "team-1".into(), title: "New".into(), ..Default::default() };
+    engine.send(Command::CreateIssue { workspace: "acme".into(), request_id: 7, draft });
+    let seen = wait_for(&engine, Duration::from_secs(5), |e| matches!(e, Event::CreateFailed { .. }));
+    assert!(matches!(seen.last(), Some(Event::CreateFailed { request_id: 7, .. })), "{seen:?}");
+    engine.shutdown();
+}

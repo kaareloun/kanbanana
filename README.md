@@ -140,18 +140,29 @@ to. Claude Code asks you before it runs a tool, as for any MCP server.
 
 | Keys | Action |
 |---|---|
-| Alt+1 to Alt+9 | Switch workspace (Option on macOS) |
+| C | New issue |
+| ? | Keyboard shortcuts |
+| J or Down, K or Up | Move the focus to the next or previous card in the column |
+| Left, Right | Move the focus to the previous or next column |
+| Enter or O | Open the focused issue |
+| Esc | Close the picker, leave the editor, close the panel, then clear the focus |
+| S, P, A, L | Status, priority, assignee, labels picker (focused card or open issue) |
+| I | Assign to me, or unassign when it is yours |
+| 1, 2, 3, 4 | Priority urgent, high, medium, low |
+| 0 | No priority |
+| E | Edit the description (issue open) |
+| Ctrl+Enter | Create the issue (new issue form), send a comment |
 | M | Toggle "Assigned to me" |
 | R | Sync now |
 | Ctrl+C | Copy the issue id and title |
 | Ctrl+Shift+C | Copy a prompt for Claude |
+| Alt+1 to Alt+9 | Switch workspace (Option on macOS) |
 | Ctrl+, | Settings |
-| S, P, A, L | Status, priority, assignee, labels picker (issue open) |
-| E | Edit the description |
-| Esc | Close the picker, leave the editor, close the panel |
 | Ctrl+B, Ctrl+E, Ctrl+K | Bold, code, link |
 | Ctrl+Shift+7 / 8 / 9 | Numbered list, bullet list, checklist |
-| Ctrl+Enter | Send a comment |
+
+The single keys work when no text field has focus. With the mouse over a card and no
+focus ring, they act on that card.
 
 On macOS use Cmd instead of Ctrl.
 

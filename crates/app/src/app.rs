@@ -10,13 +10,15 @@ use chrono::Utc;
 use eframe::egui::{
     self, Align2, CentralPanel, ColorImage, Frame, Key, OpenUrl, Panel, ViewportCommand, pos2, vec2,
 };
-use model::{Accent, BoardData, IssueChange, StateType, Workspace};
+use model::{Accent, BoardData, Issue, IssueChange, StateType, Workspace};
 
 use crate::actions::{self, Action};
 use crate::board::{self, BoardProps, BoardView, Drag};
 use crate::board::layout::GroupBy;
 use crate::issue_panel::{self, PanelAction, PanelState};
 use crate::mock;
+use crate::new_issue::{self, NewIssueState};
+use crate::shortcuts::{self, Shortcuts};
 use crate::onboarding::{self, OnboardingState, Step, claude::Status, page::OnboardingProps};
 use crate::settings::{self, SettingsState, page::SettingsProps};
 use crate::sync::{Command, Event, Sync, SyncStatus};
@@ -35,6 +37,7 @@ pub enum StartScreen {
     Welcome,
     Panel,
     PanelComments,
+    PanelCommentEdit,
     PanelEdit,
     Settings,
     /// Settings scrolled to the theme cards.
@@ -43,6 +46,12 @@ pub enum StartScreen {
     /// The add form with a mock key that checked OK.
     OnboardingWorkspace,
     OnboardingClaude,
+    /// The new issue form with a typed title, a status and a label.
+    NewIssue,
+    /// The keyboard shortcuts overlay.
+    Shortcuts,
+    /// The board with the keyboard focus ring on a card.
+    BoardFocus,
 }
 
 #[derive(Clone, Debug)]
@@ -71,15 +80,20 @@ impl Options {
                         Some("welcome") => StartScreen::Welcome,
                         Some("panel") => StartScreen::Panel,
                         Some("panel-comments") => StartScreen::PanelComments,
+                        Some("panel-comment-edit") => StartScreen::PanelCommentEdit,
                         Some("panel-edit") => StartScreen::PanelEdit,
                         Some("settings") => StartScreen::Settings,
                         Some("settings-appearance") => StartScreen::SettingsAppearance,
                         Some("onboarding-theme") => StartScreen::OnboardingTheme,
                         Some("onboarding-workspace") => StartScreen::OnboardingWorkspace,
                         Some("onboarding-claude") => StartScreen::OnboardingClaude,
+                        Some("new-issue") => StartScreen::NewIssue,
+                        Some("shortcuts") => StartScreen::Shortcuts,
+                        Some("board-focus") => StartScreen::BoardFocus,
                         other => bail!(
-                            "unknown screen {other:?}. Use board, board-project, board-empty, workspaces, welcome, panel, \
-                             panel-comments, panel-edit, settings, settings-appearance, onboarding-theme, onboarding-workspace or onboarding-claude."
+                            "unknown screen {other:?}. Use board, board-project, board-empty, board-focus, workspaces, welcome, panel, \
+                             panel-comments, panel-comment-edit, panel-edit, settings, settings-appearance, onboarding-theme, onboarding-workspace, \
+                             onboarding-claude, new-issue or shortcuts."
                         ),
                     }
                 }
@@ -133,6 +147,8 @@ pub struct App {
     visuals_theme: Option<Theme>,
     /// Text of the last copy and when it happened, for the "Copied" toast.
     toast: Option<(String, Instant)>,
+    new_issue: NewIssueState,
+    shortcuts: Shortcuts,
 }
 
 impl App {
@@ -171,6 +187,8 @@ impl App {
             focused: true,
             visuals_theme: None,
             toast: None,
+            new_issue: NewIssueState::default(),
+            shortcuts: Shortcuts::default(),
         };
         if opts.mock {
             app.load_mock(opts.screen);
@@ -284,6 +302,18 @@ impl App {
             self.active = Some("northwind".into());
             self.board.group = GroupBy::Project;
         }
+        if screen == StartScreen::BoardFocus {
+            self.board.focus = Some("acme-i-web-219".into());
+        }
+        if screen == StartScreen::Shortcuts {
+            self.shortcuts.opened_at = Some(f64::NEG_INFINITY);
+        }
+        if screen == StartScreen::NewIssue
+            && let Some(b) = self.boards.get("acme")
+        {
+            let title = "Gift card balance shows 0 after a partial refund";
+            self.new_issue.demo(b, "acme-t-web", title, "In Progress", &["Bug"]);
+        }
         if screen == StartScreen::BoardProject {
             self.active = Some("northwind".into());
             self.board.group = GroupBy::Project;
@@ -333,6 +363,8 @@ impl App {
         };
         let empty = BoardData::default();
         let data = self.boards.get(&ws.slug).unwrap_or(&empty);
+        let blocked = self.new_issue.is_open() || self.shortcuts.is_open();
+        self.panel.keys_off = blocked;
         if let Some(issue) = self.panel.issue_id.as_ref().and_then(|id| data.issues.iter().find(|i| &i.id == id)) {
             let ctx = ui.ctx().clone();
             let mut out = Vec::new();
@@ -351,8 +383,12 @@ impl App {
             data,
             sync: &self.sync.status,
             selected: self.panel.issue_id.as_deref(),
+            blocked,
         };
         board::show(ui, t, &props, &mut self.board, actions);
+        let ctx = ui.ctx().clone();
+        new_issue::show(&ctx, t, &mut self.new_issue, data, actions);
+        shortcuts::show(&ctx, t, &mut self.shortcuts);
     }
 
     fn apply(&mut self, ctx: &egui::Context, a: Action) {
@@ -368,11 +404,37 @@ impl App {
                     self.sync.send(Command::ChangeIssue { workspace: ws, issue_id, change });
                 }
             }
-            Action::SelectIssue(id) => {
-                if id != self.panel.issue_id {
-                    self.comments = Default::default();
+            Action::SelectIssue(id) => self.select_issue(id),
+            Action::OpenIssueWith { issue_id, picker } => {
+                self.panel.open_with = Some(picker);
+                self.select_issue(Some(issue_id));
+            }
+            Action::NewIssue => {
+                if self.screen == Screen::Board
+                    && let Some(ws) = self.active.clone()
+                    && let Some(b) = self.boards.get(&ws)
+                {
+                    let (team, project) = self.board.tab_scope(&ws, b);
+                    self.shortcuts.opened_at = None;
+                    self.new_issue.open(theme::motion::now(ctx), b, team, project);
                 }
-                self.panel.issue_id = id;
+            }
+            Action::CreateIssue { request_id, draft } => {
+                let Some(ws) = self.active.clone() else { return };
+                if self.mock {
+                    // Mock mode has no engine. The board takes the issue at once.
+                    match self.boards.get_mut(&ws).and_then(|b| mock::create(b, &ws, &draft)) {
+                        Some(issue) => self.issue_created(&ws, request_id, &issue),
+                        None => self.new_issue.on_failed(request_id, "the mock board has no such team"),
+                    }
+                } else {
+                    self.sync.send(Command::CreateIssue { workspace: ws, request_id, draft });
+                }
+            }
+            Action::ShowShortcuts => {
+                if !self.new_issue.is_open() {
+                    self.shortcuts.toggle(theme::motion::now(ctx));
+                }
             }
             Action::SwitchWorkspace(slug) => {
                 if self.workspaces.iter().any(|w| w.slug == slug) {
@@ -382,7 +444,9 @@ impl App {
                     self.panel = PanelState::default();
                     self.comments = Default::default();
                     self.board.drag = None;
+                    self.board.focus = None;
                     if changed {
+                        self.new_issue.close();
                         self.activate();
                     }
                 }
@@ -580,6 +644,11 @@ impl App {
                     self.sync.status = SyncStatus::Error(format!("Rate limit, retry {local}"));
                 }
                 Event::BoardChanged { workspace } => self.reload_board(&workspace),
+                Event::IssueCreated { workspace, request_id, issue } => {
+                    self.reload_board(&workspace);
+                    self.issue_created(&workspace, request_id, &issue);
+                }
+                Event::CreateFailed { request_id, message, .. } => self.new_issue.on_failed(request_id, &message),
                 Event::ChangeFailed { workspace, message, .. } => {
                     self.reload_board(&workspace);
                     self.sync.status = SyncStatus::Error(format!("Change not saved: {message}"));
@@ -801,6 +870,7 @@ impl App {
         let name = match screen {
             StartScreen::Panel => "panel",
             StartScreen::PanelComments => "panel-comments",
+            StartScreen::PanelCommentEdit => "panel-comment-edit",
             StartScreen::PanelEdit => "panel-edit",
             _ => return,
         };
@@ -844,6 +914,29 @@ fn take_engine_actions(issue_id: &str, panel: Vec<PanelAction>, actions: &mut Ve
 }
 
 impl App {
+    fn select_issue(&mut self, id: Option<String>) {
+        if id != self.panel.issue_id {
+            self.comments = Default::default();
+        }
+        self.panel.issue_id = id;
+    }
+
+    /// The new card gets the focus ring and the board shows it. Without "Create more"
+    /// the form closed, and the panel opens the issue.
+    fn issue_created(&mut self, ws: &str, request_id: u64, issue: &Issue) {
+        let Some(closed) = self.new_issue.on_created(request_id) else { return };
+        if self.active.as_deref() != Some(ws) {
+            return;
+        }
+        if let Some(b) = self.boards.get(ws) {
+            self.board.reveal(ws, b, issue);
+        }
+        self.board.focus_on(&issue.id);
+        if closed {
+            self.select_issue(Some(issue.id.clone()));
+        }
+    }
+
     /// The theme with the accent of the workspace on screen.
     fn active_theme(&self) -> Theme {
         if self.screen == Screen::Workspaces {

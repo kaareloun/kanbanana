@@ -39,6 +39,8 @@ pub enum Command {
     /// Window focus, refresh key, workspace switch. Queued syncs of one workspace run once.
     SyncNow { workspace: String },
     ChangeIssue { workspace: String, issue_id: String, change: model::IssueChange },
+    /// Creates an issue. `request_id` comes back in `IssueCreated` or `CreateFailed`.
+    CreateIssue { workspace: String, request_id: u64, draft: model::IssueDraft },
     LoadComments { workspace: String, issue_id: String },
     CreateComment { workspace: String, issue_id: String, body: String, parent_id: Option<String> },
     UpdateComment { workspace: String, issue_id: String, comment_id: String, body: String },
@@ -60,6 +62,9 @@ pub enum Event {
     /// A store write the GUI must reload for. Also sent for writes by other processes.
     BoardChanged { workspace: String },
     ChangeFailed { workspace: String, issue_id: String, message: String },
+    /// The store has the new issue. A `BoardChanged` follows.
+    IssueCreated { workspace: String, request_id: u64, issue: model::Issue },
+    CreateFailed { workspace: String, request_id: u64, message: String },
     Comments { issue_id: String, comments: Vec<model::Comment> },
     CommentsFailed { issue_id: String, message: String },
     CommentSaved { issue_id: String, comment: model::Comment },

@@ -1,4 +1,4 @@
-//! Board top bar: workspace name, sync status and refresh.
+//! Board top bar: workspace name, the new issue button, sync status and refresh.
 
 use std::f32::consts::TAU;
 
@@ -38,6 +38,12 @@ pub fn show(ui: &mut Ui, t: &Theme, info: &TopbarInfo, sync: &SyncStatus, action
                 actions.push(Action::Refresh);
             }
             sync_status(ui, t, sync, info.last_sync);
+            // Left of the fixed sync slot, so a status change never moves it.
+            ui.add_space(6.0);
+            let new = parts::button(ui, t, "New issue", parts::Btn::Primary, Some("C"), true);
+            if new.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                actions.push(Action::NewIssue);
+            }
         });
     });
 }

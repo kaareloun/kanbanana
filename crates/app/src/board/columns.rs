@@ -176,6 +176,11 @@ pub fn show(ui: &mut Ui, t: &Theme, props: &BoardProps, tab: &str, cols: &[Colum
                     }
                 }
 
+                // The wells take every scroll target, so the board scrolls to the focused
+                // well after they drew.
+                if let Some(r) = view.focus_well.take() {
+                    ui.scroll_to_rect(r, None);
+                }
                 if let (Some(d), Some(s), Some(pt)) = (view.drag.clone(), src, pointer) {
                     let card_w = geo[s.col].1 - 2.0 * WELL_PAD;
                     finish_drag(&ctx, &env, d, s, pt, card_w, pick, drop, view, actions);
@@ -183,7 +188,7 @@ pub fn show(ui: &mut Ui, t: &Theme, props: &BoardProps, tab: &str, cols: &[Colum
             });
     });
 
-    panel_click(&ctx, area, props.selected.is_some() && !menu_open, &hits, actions);
+    panel_click(&ctx, area, props.selected.is_some() && !menu_open && !props.blocked, &hits, actions);
     view.cards = hits.cards;
     if view.settle.as_ref().is_some_and(|s| motion::now(&ctx) - s.start >= f64::from(SNAP)) {
         view.settle = None;
@@ -408,6 +413,11 @@ fn well_column(
                                 hits.cards.push((seen, env.data.issues[i].id.clone()));
                             }
                             card_widget(ui, env, r, i, view, actions);
+                            if view.focus_scroll && view.focus.as_deref() == Some(env.data.issues[i].id.as_str()) {
+                                ui.scroll_to_rect(r.expand(WELL_PAD), None);
+                                view.focus_scroll = false;
+                                view.focus_well = Some(rect);
+                            }
                         }
                         Slot::Placeholder | Slot::Drop => {
                             if what == Slot::Placeholder {
@@ -490,6 +500,12 @@ fn is_marked(env: &Env, i: usize) -> bool {
     env.selected == Some(id) || env.menu.as_deref() == Some(id)
 }
 
+/// The focus ring hides on the open issue, since its selection ring marks it already.
+fn is_focused(env: &Env, view: &BoardView, i: usize) -> bool {
+    let id = env.data.issues[i].id.as_str();
+    view.focus.as_deref() == Some(id) && env.selected != Some(id)
+}
+
 fn card_id(issue_id: &str) -> Id {
     Id::unique(("lb-card", issue_id))
 }
@@ -504,6 +520,7 @@ fn card_widget(ui: &mut Ui, env: &Env, rect: Rect, i: usize, view: &mut BoardVie
     let fx = Fx {
         hover: motion::toggle(&ctx, Id::unique(("lb-card-hover", &issue.id)), hovered),
         select: motion::toggle(&ctx, Id::unique(("lb-card-select", &issue.id)), is_marked(env, i)),
+        focus: motion::toggle(&ctx, Id::unique(("lb-card-focus", &issue.id)), is_focused(env, view, i)),
         floating: false,
     };
     let cd = env.res.card(issue);

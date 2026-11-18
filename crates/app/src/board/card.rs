@@ -50,12 +50,14 @@ pub struct CardData<'a> {
 pub struct Fx {
     pub hover: f32,
     pub select: f32,
+    /// Keyboard focus ring around the card.
+    pub focus: f32,
     /// The card follows the pointer. It paints its own shadow.
     pub floating: bool,
 }
 
 impl Fx {
-    pub const FLOATING: Fx = Fx { hover: 0.0, select: 1.0, floating: true };
+    pub const FLOATING: Fx = Fx { hover: 0.0, select: 1.0, focus: 0.0, floating: true };
 }
 
 /// Lookups the cards need. Built once per frame.
@@ -215,6 +217,10 @@ pub fn paint(p: &Painter, t: &Theme, rect: Rect, c: &CardData, fx: Fx) {
     let base = t.hl_med.lerp_to_gamma(t.hl_high, fx.hover);
     let stroke = Stroke::new(1.0 + fx.select, base.lerp_to_gamma(t.accent_color, fx.select));
     p.rect(rect, radius, t.overlay, stroke, StrokeKind::Inside);
+    if fx.focus > 0.0 {
+        let ring = Stroke::new(2.0, Theme::tint(t.accent_color, fx.focus));
+        p.rect_stroke(rect.expand(3.0), CornerRadius::same(RADIUS + 3), ring, StrokeKind::Inside);
+    }
     let inner = Rect::from_min_max(rect.min + vec2(PAD_X, PAD_Y), rect.max - vec2(PAD_X, PAD_Y));
     let x0 = inner.min.x;
 

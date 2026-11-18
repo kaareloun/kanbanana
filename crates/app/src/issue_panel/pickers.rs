@@ -21,6 +21,8 @@ enum Look {
     /// Initials and color, and the photo URL.
     User(Option<(String, Color32)>, Option<String>),
     Label(Color32),
+    /// The team key, for example "WEB".
+    Team(String),
 }
 
 struct Opt {
@@ -89,6 +91,16 @@ fn options(t: &Theme, p: &Picker, issue: &Issue, data: &BoardData) -> Vec<Opt> {
             }
             v
         }
+        PickerKind::Team => data
+            .teams
+            .iter()
+            .map(|team| Opt {
+                key: team.id.clone(),
+                name: team.name.clone(),
+                look: Look::Team(team.key.clone()),
+                selected: team.id == issue.team_id,
+            })
+            .collect(),
         PickerKind::Labels => p
             .order
             .iter()
@@ -114,6 +126,7 @@ fn texts(kind: PickerKind) -> (&'static str, &'static str, &'static str) {
         PickerKind::Priority => ("Filter priorities", "P", "Enter picks. Esc closes."),
         PickerKind::Assignee => ("Filter people", "A", "Enter picks. Esc closes."),
         PickerKind::Labels => ("Filter labels", "L", "Enter toggles. Esc closes."),
+        PickerKind::Team => ("Filter teams", "T", "Enter picks. Esc closes."),
     }
 }
 
@@ -127,7 +140,47 @@ pub fn show(
     out: &mut Vec<PanelAction>,
 ) {
     let Some(picker) = state.picker.as_mut() else { return };
-    let anchor = state.chip_rects[picker.kind as usize];
+    let anchor = state.chip_rects.get(picker.kind as usize).copied().unwrap_or(panel);
+    let kind = picker.kind;
+    let r = popover(ctx, t, picker, anchor, panel, Order::Foreground, issue, data);
+    if let Some(change) = r.picked.and_then(|key| change_for(kind, &key, issue)) {
+        out.push(PanelAction::Change(change));
+    }
+    if r.close {
+        state.picker = None;
+    }
+}
+
+/// A picker that opens now. The new issue form uses it too.
+pub fn new_picker(kind: PickerKind, issue: &Issue, data: &BoardData) -> Picker {
+    let order = match kind {
+        PickerKind::Labels => label_order(issue, data),
+        _ => Vec::new(),
+    };
+    Picker { kind, filter: String::new(), cursor: 0, order, focus: true, opened_at: None }
+}
+
+/// What the user did in a picker this frame.
+pub struct PopOut {
+    /// Key of the picked row: a state, priority number, user, label or team id.
+    /// An empty key is "No assignee".
+    pub picked: Option<String>,
+    pub close: bool,
+}
+
+/// Draws the picker popover under `anchor`, kept inside `bounds`. It reads Up, Down, Enter
+/// and Esc. A pick closes it, except for labels.
+#[allow(clippy::too_many_arguments)]
+pub fn popover(
+    ctx: &egui::Context,
+    t: &Theme,
+    picker: &mut Picker,
+    anchor: Rect,
+    bounds: Rect,
+    order: Order,
+    issue: &Issue,
+    data: &BoardData,
+) -> PopOut {
     let opts = options(t, picker, issue, data);
     picker.cursor = picker.cursor.min(opts.len().saturating_sub(1));
 
@@ -140,8 +193,7 @@ pub fn show(
         )
     });
     if esc {
-        state.picker = None;
-        return;
+        return PopOut { picked: None, close: true };
     }
     if down && !opts.is_empty() {
         picker.cursor = (picker.cursor + 1) % opts.len();
@@ -151,13 +203,13 @@ pub fn show(
     }
     let mut pick = if enter { Some(picker.cursor) } else { None };
 
-    let x = anchor.left().min(panel.right() - 8.0 - POP_W).max(panel.left() + 8.0);
-    let y = anchor.bottom().clamp(panel.top(), panel.bottom() - 120.0) + 6.0;
+    let x = anchor.left().min(bounds.right() - 8.0 - POP_W).max(bounds.left() + 8.0);
+    let y = anchor.bottom().clamp(bounds.top(), bounds.bottom() - 120.0) + 6.0;
     let (hint_text, key, footer) = texts(picker.kind);
     let start = *picker.opened_at.get_or_insert_with(|| anim::now(ctx));
     let pop = anim::since(ctx, start);
     let shown = Area::new(id("lb-panel-picker"))
-        .order(Order::Foreground)
+        .order(order)
         .fade_in(false)
         .fixed_pos(pos2(x, y))
         .constrain(true)
@@ -234,11 +286,9 @@ pub fn show(
         i.pointer.any_pressed()
             && i.pointer.interact_pos().is_some_and(|p| !area.contains(p) && !anchor.contains(p))
     });
-    let kind = picker.kind;
-    if let Some(o) = pick.and_then(|i| opts.get(i)) {
-        apply(state, kind, o, issue, out);
-    } else if outside {
-        state.picker = None;
+    match pick.and_then(|i| opts.get(i)) {
+        Some(o) => PopOut { picked: Some(o.key.clone()), close: picker.kind != PickerKind::Labels },
+        None => PopOut { picked: None, close: outside },
     }
 }
 
@@ -281,6 +331,10 @@ fn row(ui: &mut egui::Ui, t: &Theme, kind: PickerKind, o: &Opt, on: bool, cursor
             p.circle_filled(pos2(x + 4.0, cy), 4.0, *c);
             x += 18.0;
         }
+        Look::Team(key) => {
+            let r = parts::text(p, pos2(x, cy), Align2::LEFT_CENTER, key, W::MonoMedium, 11.0, t.subtle);
+            x = r.right().max(x + 30.0) + 10.0;
+        }
     }
     parts::text(p, pos2(x, cy), Align2::LEFT_CENTER, &o.name, W::Medium, 13.0, t.text);
     if kind != PickerKind::Labels && o.selected {
@@ -289,31 +343,27 @@ fn row(ui: &mut egui::Ui, t: &Theme, kind: PickerKind, o: &Opt, on: bool, cursor
     resp.clicked()
 }
 
-fn apply(state: &mut PanelState, kind: PickerKind, o: &Opt, issue: &Issue, out: &mut Vec<PanelAction>) {
-    let change = match kind {
-        PickerKind::Status => (o.key != issue.state_id).then(|| IssueChange::State { state_id: o.key.clone(), sort_order: None }),
+/// The change a pick makes on `issue`. None when the value stays the same, or for a team.
+pub fn change_for(kind: PickerKind, key: &str, issue: &Issue) -> Option<IssueChange> {
+    match kind {
+        PickerKind::Status => (key != issue.state_id).then(|| IssueChange::State { state_id: key.to_string(), sort_order: None }),
         PickerKind::Priority => {
-            let pr = Priority::from_linear(o.key.parse().unwrap_or(0));
+            let pr = Priority::from_linear(key.parse().unwrap_or(0));
             (pr != issue.priority).then_some(IssueChange::Priority(pr))
         }
         PickerKind::Assignee => {
-            let a = (!o.key.is_empty()).then(|| o.key.clone());
+            let a = (!key.is_empty()).then(|| key.to_string());
             (a != issue.assignee_id).then_some(IssueChange::Assignee(a))
         }
         PickerKind::Labels => {
             let mut ids = issue.label_ids.clone();
-            if let Some(pos) = ids.iter().position(|l| *l == o.key) {
+            if let Some(pos) = ids.iter().position(|l| l == key) {
                 ids.remove(pos);
             } else {
-                ids.push(o.key.clone());
+                ids.push(key.to_string());
             }
             Some(IssueChange::Labels(ids))
         }
-    };
-    if let Some(c) = change {
-        out.push(PanelAction::Change(c));
-    }
-    if kind != PickerKind::Labels {
-        state.picker = None;
+        PickerKind::Team => None,
     }
 }

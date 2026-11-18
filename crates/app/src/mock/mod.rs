@@ -2,7 +2,7 @@
 
 use chrono::{Duration, Utc};
 use model::{
-    Accent, BoardData, DevStage, DevState, Issue, Label, Priority, Project, Source, StateType,
+    Accent, BoardData, DevStage, DevState, Issue, IssueDraft, Label, Priority, Project, Source, StateType,
     Team, User, Workspace, WorkflowState,
 };
 
@@ -34,6 +34,45 @@ pub fn board(slug: &str) -> BoardData {
         }
     }
     b.data
+}
+
+/// Mock mode has no engine: a new issue goes straight onto the board, on top of its column.
+/// None when the team is unknown.
+pub fn create(data: &mut BoardData, ws: &str, draft: &IssueDraft) -> Option<Issue> {
+    let key = data.teams.iter().find(|t| t.id == draft.team_id)?.key.clone();
+    let prefix = format!("{key}-");
+    let n = data
+        .issues
+        .iter()
+        .filter_map(|i| i.identifier.strip_prefix(&prefix)?.parse::<u32>().ok())
+        .max()
+        .unwrap_or(0)
+        + 1;
+    let identifier = format!("{key}-{n}");
+    let state_id = draft.state_id.clone().or_else(|| crate::new_issue::default_state(data, &draft.team_id))?;
+    let top = data.issues.iter().filter(|i| i.state_id == state_id).map(|i| i.sort_order).fold(f64::INFINITY, f64::min);
+    let now = Utc::now();
+    let issue = Issue {
+        id: format!("{ws}-i-{}", identifier.to_lowercase()),
+        source: Source::Linear,
+        workspace: ws.into(),
+        title: draft.title.trim().to_string(),
+        description: draft.description.clone(),
+        team_id: draft.team_id.clone(),
+        state_id,
+        project_id: draft.project_id.clone(),
+        assignee_id: draft.assignee_id.clone(),
+        priority: draft.priority,
+        label_ids: draft.label_ids.clone(),
+        sort_order: if top.is_finite() { top - 1000.0 } else { 1000.0 },
+        comment_count: 0,
+        url: Some(format!("https://linear.app/{ws}/issue/{}", identifier.to_lowercase())),
+        identifier,
+        created_at: now,
+        updated_at: now,
+    };
+    data.issues.push(issue.clone());
+    Some(issue)
 }
 
 /// Design v3 02: one team, two projects, everything in Back office is assigned to Kaarel.

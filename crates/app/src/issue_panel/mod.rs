@@ -9,10 +9,10 @@ mod dev;
 mod editor;
 mod header;
 mod icons;
-mod keys;
+pub mod keys;
 mod mock;
 mod paste;
-mod pickers;
+pub mod pickers;
 mod props;
 mod rich_view;
 mod time;
@@ -82,6 +82,8 @@ pub enum PickerKind {
     Priority,
     Assignee,
     Labels,
+    /// Only the new issue form has it. The panel never opens it.
+    Team,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -148,6 +150,10 @@ pub struct PanelState {
     last_comments: CommentsView,
     /// Scrolls the body to the top on the next frame.
     reset_scroll: bool,
+    /// Picker to open with the next issue the panel shows, for board shortcuts.
+    pub open_with: Option<PickerKind>,
+    /// The app turns the panel shortcuts off while a modal is open.
+    pub keys_off: bool,
 }
 
 impl Default for PanelState {
@@ -176,6 +182,8 @@ impl Default for PanelState {
             closing: false,
             last_comments: CommentsView::default(),
             reset_scroll: false,
+            open_with: None,
+            keys_off: false,
         }
     }
 }
@@ -194,11 +202,7 @@ impl PanelState {
     }
 
     pub fn open_picker(&mut self, kind: PickerKind, issue: &Issue, data: &BoardData) {
-        let order = match kind {
-            PickerKind::Labels => pickers::label_order(issue, data),
-            _ => Vec::new(),
-        };
-        self.picker = Some(Picker { kind, filter: String::new(), cursor: 0, order, focus: true, opened_at: None });
+        self.picker = Some(pickers::new_picker(kind, issue, data));
     }
 
     /// Marks an upload as started, for the progress row. The app does not need to call it.
@@ -256,6 +260,9 @@ pub fn show_panel(
         state.reset_for(&issue.id);
     }
     state.closing = false;
+    if let Some(kind) = state.open_with.take() {
+        state.open_picker(kind, issue, data);
+    }
     if state.loaded.as_deref() != Some(issue.id.as_str()) {
         state.loaded = Some(issue.id.clone());
         out.push(PanelAction::LoadComments);

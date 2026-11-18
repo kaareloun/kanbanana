@@ -2,13 +2,23 @@
 
 use std::path::PathBuf;
 
-use model::{BoardData, Issue, IssueChange, Workspace};
+use model::{BoardData, Issue, IssueChange, IssueDraft, Workspace};
+
+use crate::issue_panel::PickerKind;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     /// Edit an issue. The app applies it to local state at once, then queues it for sync.
     ChangeIssue { issue_id: String, change: IssueChange },
     SelectIssue(Option<String>),
+    /// Opens the issue in the panel with this picker open.
+    OpenIssueWith { issue_id: String, picker: PickerKind },
+    /// Opens the new issue form.
+    NewIssue,
+    /// Creates an issue in the active workspace. The result goes to the form by `request_id`.
+    CreateIssue { request_id: u64, draft: IssueDraft },
+    /// Opens or closes the keyboard shortcuts overlay.
+    ShowShortcuts,
     SwitchWorkspace(String),
     OpenWorkspaces,
     CloseWorkspaces,
