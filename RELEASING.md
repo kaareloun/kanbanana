@@ -1,123 +1,68 @@
 # Releasing Kanbanana
 
-Three channels: a GitHub release with prebuilt archives, the AUR for Arch, and a Homebrew
-tap for macOS (and Linux). Do them in this order, because the AUR package and the Homebrew
-formula both download the source archive of the GitHub tag.
-
-## 1. GitHub release
-
-1. Set the version in `Cargo.toml` (`[workspace.package] version`), run
-   `cargo build -p kanbanana` once so `Cargo.lock` updates, and commit:
-   `git commit -am "chore: release v0.1.0"`.
-2. Tag and push:
-
-   ```
-   git tag v0.1.0
-   git push origin main v0.1.0
-   ```
-
-3. `.github/workflows/release.yml` builds `kanbanana` for Linux x86_64, macOS Apple
-   silicon and macOS Intel, and attaches the archives and their `.sha256` files to the
-   release `v0.1.0`. Watch it with `gh run watch`.
-4. Edit the release notes on GitHub if you like (`gh release edit v0.1.0 --notes-file ...`).
-
-## 2. AUR (Arch Linux)
-
-One time:
-
-1. Create an account on <https://aur.archlinux.org> and add your SSH public key in
-   "My Account".
-2. Check that the name is still free: <https://aur.archlinux.org/packages/kanbanana>.
-
-Each release:
-
-1. Get the checksum of the tag archive:
-
-   ```
-   curl -sL https://github.com/kaareloun/kanbanana/archive/refs/tags/v0.1.0.tar.gz | sha256sum
-   ```
-
-2. Clone the AUR repo (the first clone of a new name is empty, that is fine):
-
-   ```
-   git clone ssh://aur@aur.archlinux.org/kanbanana.git ~/aur/kanbanana
-   cp packaging/aur/PKGBUILD ~/aur/kanbanana/
-   cd ~/aur/kanbanana
-   ```
-
-3. In `PKGBUILD` set `pkgver` to the new version, `pkgrel=1`, and replace `'SKIP'` in
-   `sha256sums` with the checksum from step 1.
-4. Build and test it in a clean environment, then write `.SRCINFO`:
-
-   ```
-   makepkg -si          # builds, runs the tests and installs it
-   namcap PKGBUILD      # optional lint (pacman -S namcap)
-   makepkg --printsrcinfo > .SRCINFO
-   ```
-
-5. Publish:
-
-   ```
-   git add PKGBUILD .SRCINFO
-   git commit -m "Update to 0.1.0"
-   git push
-   ```
-
-Users then install with `yay -S kanbanana` or `paru -S kanbanana`. Optionally, a second
-package `kanbanana-bin` can use the prebuilt Linux archive from the GitHub release, so
-users skip the Rust build.
-
-## 3. Homebrew (macOS)
-
-Homebrew's default place for small new projects is a tap: your own repo named
-`homebrew-kanbanana`. Getting into homebrew-core itself needs a project with some
-traction (stars, users), so start with the tap and apply later.
-
-One time:
+A release is one command:
 
 ```
-gh repo create kaareloun/homebrew-kanbanana --public --description "Homebrew tap for Kanbanana"
-git clone https://github.com/kaareloun/homebrew-kanbanana ~/homebrew-kanbanana
-mkdir -p ~/homebrew-kanbanana/Formula
+scripts/release.sh 0.2.0
 ```
 
-Each release:
+It bumps the version in `Cargo.toml`, commits `chore: release v0.2.0`, tags `v0.2.0` and
+pushes. The tag starts `.github/workflows/release.yml`, which:
 
-1. Get the checksum of the tag archive (same command as for the AUR).
-2. Copy `packaging/homebrew/kanbanana.rb` to `~/homebrew-kanbanana/Formula/kanbanana.rb`,
-   set the version in `url` and paste the checksum into `sha256`.
-3. Test it on a Mac:
+1. checks that the tag matches the version in `Cargo.toml`;
+2. builds `kanbanana` for Linux x86_64, macOS Apple silicon and macOS Intel;
+3. publishes the GitHub release with the archives, their checksums and generated notes;
+4. writes `Formula/kanbanana.rb` (Homebrew) and updates `packaging/aur/PKGBUILD`, and
+   commits both to `main`;
+5. pushes the package to the AUR (`kanbanana`), with fresh checksums and `.SRCINFO`.
 
-   ```
-   brew install --build-from-source ~/homebrew-kanbanana/Formula/kanbanana.rb
-   brew test kanbanana
-   brew audit --strict --new kanbanana
-   ```
+Follow it with `gh run watch`. Everything lives in this repo: the repo is its own Homebrew
+tap, and the AUR package is pushed from here.
 
-4. Commit and push the tap:
+## One-time setup
 
-   ```
-   cd ~/homebrew-kanbanana
-   git add Formula/kanbanana.rb
-   git commit -m "kanbanana 0.1.0"
-   git push
-   ```
-
-Users then install with:
+The AUR step needs an SSH key that may push to the AUR. Use a key just for this, not your
+personal key, so the workflow can do nothing else with it:
 
 ```
-brew install kaareloun/kanbanana/kanbanana
+ssh-keygen -t ed25519 -N "" -C "kanbanana-release@github-actions" -f /tmp/kanbanana-aur
+gh secret set AUR_SSH_PRIVATE_KEY --repo kaareloun/kanbanana < /tmp/kanbanana-aur
+cat /tmp/kanbanana-aur.pub
+rm /tmp/kanbanana-aur /tmp/kanbanana-aur.pub
 ```
 
-The formula builds from source and installs the `kanbanana` command. Start it from the
-terminal with `kanbanana`. A double-clickable macOS app (a cask with `Kanbanana.app`)
-needs an app bundle, and to open without a warning it must be signed and notarized with
-an Apple Developer account (99 USD a year). That is a later step.
+Paste the printed public key into <https://aur.archlinux.org> under My Account, SSH Public
+Key (one key per line, next to your own), and save.
 
-## Checklist
+The first push creates the `kanbanana` package on the AUR under your account.
 
-- [ ] CI is green on Linux and macOS (`.github/workflows/ci.yml`).
-- [ ] Version bumped and tagged, release workflow green, archives on the release page.
-- [ ] AUR: `PKGBUILD` version and checksum, `.SRCINFO` regenerated, pushed.
-- [ ] Homebrew tap: formula version and checksum, `brew test` passes, pushed.
-- [ ] README install section says how to install from the AUR and Homebrew.
+## How users install
+
+- Arch: `yay -S kanbanana` (or `paru -S kanbanana`). Builds from the release source.
+- macOS and Linux with Homebrew:
+
+  ```
+  brew tap kaareloun/kanbanana https://github.com/kaareloun/kanbanana
+  brew install kanbanana
+  ```
+
+  The formula uses the prebuilt archives from the GitHub release, so there is no Rust
+  build on the user's machine. `brew upgrade` picks up new releases.
+- Anyone: download an archive from the GitHub release page.
+
+## If a step fails
+
+- Tag and Cargo.toml differ: delete the tag (`git push --delete origin v0.2.0` and
+  `git tag -d v0.2.0`), fix the version, run the script again.
+- A build fails: fix it on `main`, then delete and push the tag again; the release is
+  only created after all builds pass.
+- The AUR step fails (key, network): re-run the failed job from the Actions page. The
+  GitHub release and the Homebrew formula are already done at that point.
+
+## Later
+
+- A double-clickable macOS app (a cask with `Kanbanana.app`) needs an app bundle, and it
+  opens without a warning only when it is signed and notarized with an Apple Developer
+  account (99 USD a year).
+- homebrew-core (plain `brew install kanbanana` without the tap) needs a project with some
+  traction; apply when it has users.

@@ -45,9 +45,23 @@ Unofficial. Not made by or affiliated with Linear.
 
 ## Install
 
-Packages are planned for the AUR and Homebrew under the name `kanbanana`
-(`yay -S kanbanana`, `brew install kanbanana`). They are not published yet.
-Until then, build from source:
+**Arch Linux** (AUR):
+
+```
+yay -S kanbanana
+```
+
+**macOS and Linux** (Homebrew, this repo is the tap):
+
+```
+brew tap kaareloun/kanbanana https://github.com/kaareloun/kanbanana
+brew install kanbanana
+```
+
+**Prebuilt archives** for Linux x86_64 and macOS (Apple silicon and Intel) are on the
+[releases page](https://github.com/kaareloun/kanbanana/releases).
+
+The packages appear with the first release. Until then, or to hack on it, build from source:
 
 1. Install Rust (stable, edition 2024): <https://rustup.rs>
 2. Platform tools:
