@@ -1,7 +1,10 @@
 name: ci
 
+# Tags are built by release.yml. Running CI on them too doubles the macOS jobs, and the
+# free macOS runners then queue long enough for GitHub to cancel the release build.
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
