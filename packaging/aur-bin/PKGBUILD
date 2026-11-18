@@ -1,7 +1,7 @@
 # Maintainer: Kaarel <github.com/kaareloun>
 # Installs the prebuilt binary from the GitHub release. Updated by .github/workflows/release.yml.
 pkgname=kanbanana-bin
-pkgver=0.1.1
+pkgver=0.1.5
 pkgrel=1
 pkgdesc="Kanban board for your Linear issues, with Claude Code built in (prebuilt binary)"
 arch=('x86_64')

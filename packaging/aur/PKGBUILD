@@ -1,6 +1,6 @@
 # Maintainer: Kaarel <github.com/kaareloun>
 pkgname=kanbanana
-pkgver=0.1.1
+pkgver=0.1.5
 pkgrel=1
 pkgdesc="Kanban board for your Linear issues, with Claude Code built in"
 arch=('x86_64' 'aarch64')
