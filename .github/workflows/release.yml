@@ -109,7 +109,8 @@ jobs:
           commit_message: Update to ${{ needs.check.outputs.version }}
           ssh_keyscan_types: ed25519
       - name: Commit the PKGBUILDs to main
-        run: scripts/commit-to-main.sh "chore: update aur packages for v${VERSION}" packaging/aur/PKGBUILD packaging/aur-bin/PKGBUILD
+        run: |
+          scripts/commit-to-main.sh "chore: update aur packages for v${VERSION}" packaging/aur/PKGBUILD packaging/aur-bin/PKGBUILD
 
   # ------------------------------------------------------------------ macOS track
 
@@ -167,4 +168,5 @@ jobs:
               -e "s/{{SHA_LINUX}}/$(sha x86_64-unknown-linux-gnu)/" \
               packaging/homebrew/kanbanana.rb.tmpl > Formula/kanbanana.rb
       - name: Commit the formula to main
-        run: scripts/commit-to-main.sh "chore: update homebrew formula for v${VERSION}" Formula/kanbanana.rb
+        run: |
+          scripts/commit-to-main.sh "chore: update homebrew formula for v${VERSION}" Formula/kanbanana.rb
