@@ -3,24 +3,24 @@
 class Kanbanana < Formula
   desc "Kanban board for your Linear issues, with Claude Code built in"
   homepage "https://github.com/kaareloun/kanbanana"
-  version "0.1.0"
+  version "0.1.1"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/kaareloun/kanbanana/releases/download/v0.1.0/kanbanana-v0.1.0-aarch64-apple-darwin.tar.gz"
-      sha256 "ccfd8baf7c7b34d678c4dc1278ce87cfc07bed700947bee2aeb07f2a835cb7d0"
+      url "https://github.com/kaareloun/kanbanana/releases/download/v0.1.1/kanbanana-v0.1.1-aarch64-apple-darwin.tar.gz"
+      sha256 "4c0cf2a0150e6228954321b49c406a766a6e39a90802af759fd917fd8edc4f4f"
     end
     on_intel do
-      url "https://github.com/kaareloun/kanbanana/releases/download/v0.1.0/kanbanana-v0.1.0-x86_64-apple-darwin.tar.gz"
-      sha256 "a4d789fff7bfb93a8cda5776881e874fb34156f3c5b1e6d9ad67534c9ce0eeba"
+      url "https://github.com/kaareloun/kanbanana/releases/download/v0.1.1/kanbanana-v0.1.1-x86_64-apple-darwin.tar.gz"
+      sha256 "28b18ba31f05c61961f87f77bbeafa17a660cc221e6a6f2cf7b7aa31b3d77952"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/kaareloun/kanbanana/releases/download/v0.1.0/kanbanana-v0.1.0-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "2f4e013ad397eae2ba21d9b1d9f8f7a73704a25c64362a33bc99504edd80f910"
+      url "https://github.com/kaareloun/kanbanana/releases/download/v0.1.1/kanbanana-v0.1.1-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "b36570d54dd313ab6882412609b893574c4b902f8fe47dbd53af30c94aae4800"
     end
   end
 
