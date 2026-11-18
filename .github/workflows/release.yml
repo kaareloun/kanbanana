@@ -1,8 +1,10 @@
 name: release
 
-# Runs when a version tag like v0.2.0 is pushed (scripts/release.sh does that). It builds
-# the app, publishes the GitHub release, then updates the Homebrew formula in this repo and
-# the package in the AUR. Everything lives in this repo: it is also the Homebrew tap.
+# Runs when a version tag like v0.2.0 is pushed (scripts/release.sh does that).
+# Two independent tracks, because macOS runners are scarce and can wait a long time:
+# - Linux: build, create the GitHub release, publish both AUR packages.
+# - macOS: build both Mac targets, add them to the same release, update the Homebrew formula.
+# A slow or cancelled macOS job never holds back the Linux release; re-run it on its own.
 on:
   push:
     tags: ["v*.*.*"]
@@ -11,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -32,65 +34,111 @@ jobs:
           fi
           echo "version=$tag" >> "$GITHUB_OUTPUT"
 
-  build:
+  # ------------------------------------------------------------------ Linux track
+
+  build-linux:
     needs: check
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          - os: ubuntu-latest
-            targets: x86_64-unknown-linux-gnu
-            rust_targets: x86_64-unknown-linux-gnu
-          # Both macOS targets build in one job. Free macOS runners are scarce, and a second
-          # macOS job tends to wait in the queue until GitHub cancels it.
-          - os: macos-latest
-            targets: aarch64-apple-darwin x86_64-apple-darwin
-            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_targets }}
       - uses: Swatinem/rust-cache@v2.9.3
         with:
-          key: ${{ matrix.os }}
-      - name: Linux libraries for eframe
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev
+          key: linux
+      - run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev
+      # CI skips the release commit, so the tests run here.
+      - run: cargo test --workspace --locked
       - name: Build and package
-        run: |
-          for target in ${{ matrix.targets }}; do
-            cargo build --release --locked -p kanbanana --target "$target"
-            name="kanbanana-v${{ needs.check.outputs.version }}-$target"
-            mkdir "$name"
-            cp "target/$target/release/kanbanana" LICENSE README.md \
-              assets/kanbanana.desktop assets/brand/icon.png assets/brand/icon.svg "$name/"
-            cp -r assets/brand/icons "$name/icons"
-            tar czf "$name.tar.gz" "$name"
-            shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
-          done
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: scripts/package-release.sh x86_64-unknown-linux-gnu
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.os }}
+          name: linux
           path: kanbanana-*.tar.gz*
           if-no-files-found: error
 
-  release:
-    needs: [check, build]
+  release-linux:
+    needs: [check, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
         with:
+          name: linux
           path: dist
-          merge-multiple: true
-      - uses: softprops/action-gh-release@v3.0.4
+      - name: Create the release with the Linux archive
+        uses: softprops/action-gh-release@v3.0.4
         with:
           files: dist/*
           generate_release_notes: true
 
-  packages:
-    needs: [check, release]
+  aur:
+    needs: [check, release-linux]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Set the version in both PKGBUILDs
+        run: |
+          for p in packaging/aur/PKGBUILD packaging/aur-bin/PKGBUILD; do
+            sed -i -e "s/^pkgver=.*/pkgver=${VERSION}/" -e "s/^pkgrel=.*/pkgrel=1/" "$p"
+          done
+      - name: Publish kanbanana-bin to the AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
+        with:
+          pkgname: kanbanana-bin
+          pkgbuild: packaging/aur-bin/PKGBUILD
+          updpkgsums: true
+          commit_username: kaareloun
+          commit_email: kaareloun@users.noreply.github.com
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: Update to ${{ needs.check.outputs.version }}
+          ssh_keyscan_types: ed25519
+      - name: Publish kanbanana to the AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
+        with:
+          pkgname: kanbanana
+          pkgbuild: packaging/aur/PKGBUILD
+          updpkgsums: true
+          commit_username: kaareloun
+          commit_email: kaareloun@users.noreply.github.com
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: Update to ${{ needs.check.outputs.version }}
+          ssh_keyscan_types: ed25519
+      - name: Commit the PKGBUILDs to main
+        run: scripts/commit-to-main.sh "chore: update aur packages for v${VERSION}" packaging/aur/PKGBUILD packaging/aur-bin/PKGBUILD
+
+  # ------------------------------------------------------------------ macOS track
+
+  build-macos:
+    needs: check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2.9.3
+        with:
+          key: macos
+      - name: Build and package
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          scripts/package-release.sh aarch64-apple-darwin
+          scripts/package-release.sh x86_64-apple-darwin
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos
+          path: kanbanana-*.tar.gz*
+          if-no-files-found: error
+
+  homebrew:
+    # Waits for the Linux release, because the formula also points at the Linux archive.
+    needs: [check, build-macos, release-linux]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.check.outputs.version }}
@@ -102,7 +150,14 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Write the Homebrew formula and the PKGBUILD
+      - name: Add the macOS archives to the release
+        uses: softprops/action-gh-release@v3.0.4
+        with:
+          tag_name: v${{ needs.check.outputs.version }}
+          files: |
+            dist/*apple-darwin.tar.gz
+            dist/*apple-darwin.tar.gz.sha256
+      - name: Write the Homebrew formula
         run: |
           sha() { cut -d' ' -f1 "dist/kanbanana-v${VERSION}-$1.tar.gz.sha256"; }
           mkdir -p Formula
@@ -111,37 +166,5 @@ jobs:
               -e "s/{{SHA_MAC_INTEL}}/$(sha x86_64-apple-darwin)/" \
               -e "s/{{SHA_LINUX}}/$(sha x86_64-unknown-linux-gnu)/" \
               packaging/homebrew/kanbanana.rb.tmpl > Formula/kanbanana.rb
-          for p in packaging/aur/PKGBUILD packaging/aur-bin/PKGBUILD; do
-            sed -i -e "s/^pkgver=.*/pkgver=${VERSION}/" -e "s/^pkgrel=.*/pkgrel=1/" "$p"
-          done
-      - name: Commit them to main
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/kanbanana.rb packaging/aur/PKGBUILD packaging/aur-bin/PKGBUILD
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: update packages for v${VERSION}"
-            git push origin main
-          fi
-      - name: Publish to the AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
-        with:
-          pkgname: kanbanana
-          pkgbuild: packaging/aur/PKGBUILD
-          updpkgsums: true
-          commit_username: kaareloun
-          commit_email: kaareloun@users.noreply.github.com
-          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: Update to ${{ needs.check.outputs.version }}
-          ssh_keyscan_types: ed25519
-      - name: Publish the prebuilt package to the AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
-        with:
-          pkgname: kanbanana-bin
-          pkgbuild: packaging/aur-bin/PKGBUILD
-          updpkgsums: true
-          commit_username: kaareloun
-          commit_email: kaareloun@users.noreply.github.com
-          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: Update to ${{ needs.check.outputs.version }}
-          ssh_keyscan_types: ed25519
+      - name: Commit the formula to main
+        run: scripts/commit-to-main.sh "chore: update homebrew formula for v${VERSION}" Formula/kanbanana.rb

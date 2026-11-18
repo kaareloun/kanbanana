@@ -7,15 +7,20 @@ scripts/release.sh 0.2.0
 ```
 
 It bumps the version in `Cargo.toml`, commits `chore: release v0.2.0`, tags `v0.2.0` and
-pushes. The tag starts `.github/workflows/release.yml`, which:
+pushes. CI skips that commit; the release workflow tests it instead. The tag starts
+`.github/workflows/release.yml`, which checks that the tag matches `Cargo.toml` and then
+runs two independent tracks:
 
-1. checks that the tag matches the version in `Cargo.toml`;
-2. builds `kanbanana` for Linux x86_64, macOS Apple silicon and macOS Intel;
-3. publishes the GitHub release with the archives, their checksums and generated notes;
-4. writes `Formula/kanbanana.rb` (Homebrew), updates `packaging/aur/PKGBUILD` and
-   `packaging/aur-bin/PKGBUILD`, and commits them to `main`;
-5. pushes both AUR packages, with fresh checksums and `.SRCINFO`: `kanbanana` (builds
-   from source) and `kanbanana-bin` (the prebuilt Linux archive from the release).
+- **Linux** (a few minutes): run the tests, build Linux x86_64, create the GitHub release
+  with the Linux archive, push both AUR packages with fresh checksums and `.SRCINFO`
+  (`kanbanana` builds from source, `kanbanana-bin` uses the prebuilt archive), and commit
+  the PKGBUILDs to `main`.
+- **macOS** (whenever a macOS runner is free): build Apple silicon and Intel in one job,
+  add both archives to the same release, write `Formula/kanbanana.rb` and commit it to
+  `main`.
+
+Free macOS runners can queue for a long time. The Linux track never waits for them, so
+Arch users get the release first.
 
 Follow it with `gh run watch`. Everything lives in this repo: the repo is its own Homebrew
 tap, and the AUR packages are pushed from here.
@@ -57,10 +62,11 @@ AUR under your account.
 
 - Tag and Cargo.toml differ: delete the tag (`git push --delete origin v0.2.0` and
   `git tag -d v0.2.0`), fix the version, run the script again.
-- A build fails: fix it on `main`, then delete and push the tag again; the release is
-  only created after all builds pass.
-- The AUR step fails (key, network): re-run the failed job from the Actions page. The
-  GitHub release and the Homebrew formula are already done at that point.
+- A build or test fails: fix it on `main`, then delete and push the tag again. Nothing is
+  published before the Linux build and tests pass.
+- The macOS job is cancelled or fails: re-run only that job (and `homebrew` after it)
+  from the Actions page. The Linux release and the AUR packages are already out.
+- The AUR step fails (key, network): re-run the `aur` job from the Actions page.
 
 ## Later
 
