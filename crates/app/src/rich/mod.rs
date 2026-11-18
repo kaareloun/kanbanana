@@ -7,6 +7,7 @@ pub mod commands;
 pub mod layout;
 pub mod overlay;
 pub mod parse;
+pub mod table;
 pub mod toolbar;
 
 use std::collections::HashMap;
@@ -30,12 +31,17 @@ use crate::theme::{Theme, W, font};
 pub struct Look {
     pub size: f32,
     pub line: f32,
-    /// False keeps `# x` as text and leaves out the heading tools, for comments.
+    /// False leaves out the heading tools and shortcuts, for comments. Headings in the
+    /// text show as headings either way.
     pub headings: bool,
+    /// Font size and line height of heading levels 1, 2 and 3 and below.
+    pub h: [(f32, f32); 3],
 }
 
-pub const DESCRIPTION: Look = Look { size: 14.0, line: 23.0, headings: true };
-pub const COMMENT: Look = Look { size: 13.0, line: 21.0, headings: false };
+pub const DESCRIPTION: Look =
+    Look { size: 14.0, line: 23.0, headings: true, h: [(24.0, 34.0), (19.0, 29.0), (16.0, 26.0)] };
+pub const COMMENT: Look =
+    Look { size: 13.0, line: 21.0, headings: false, h: [(18.0, 28.0), (16.0, 25.0), (14.0, 23.0)] };
 
 pub struct Options<'a> {
     pub look: Look,
@@ -117,7 +123,7 @@ pub fn editor(ui: &mut Ui, t: &Theme, id: Id, text: &mut String, opts: &Options)
 
     let width = ui.available_width();
     let mut pics: HashMap<String, Pic> = HashMap::new();
-    for l in parse::parse(text, look.headings) {
+    for l in parse::parse(text, true) {
         if let Some(img) = l.image {
             pics.entry(img.url.clone()).or_insert_with(|| overlay::pic(&ctx, &img));
         }
@@ -127,8 +133,9 @@ pub fn editor(ui: &mut Ui, t: &Theme, id: Id, text: &mut String, opts: &Options)
     let theme = *t;
     let mut layouter = |ui: &Ui, buf: &dyn TextBuffer, wrap: f32| {
         let s = buf.as_str();
-        let lines = parse::parse(s, look.headings);
-        let job = layout::job(s, &lines, &theme, &look, wrap, &|img| overlay::image_line_h(&pics, img, wrap));
+        let lines = parse::parse(s, true);
+        let measure = |s: &str, f: &egui::FontId| measure(ui, s, f);
+        let job = layout::job(s, &lines, &theme, &look, wrap, &|img| overlay::image_line_h(&pics, img, wrap), &measure);
         ui.fonts_mut(|f| f.layout_job(job))
     };
     let hint = egui::RichText::new(opts.placeholder).font(font(W::Regular, look.size)).color(t.muted);
@@ -155,7 +162,7 @@ pub fn editor(ui: &mut Ui, t: &Theme, id: Id, text: &mut String, opts: &Options)
 
     let galley = out.galley.clone();
     let shown = galley.text().to_string();
-    let lines = parse::parse(&shown, look.headings);
+    let lines = parse::parse(&shown, true);
     let origin = out.galley_pos - vec2(galley.rect.left(), 0.0);
     let links_live = !focused || ui.input(|i| i.modifiers.command);
     let paint_ctx = overlay::Ctx {
@@ -163,6 +170,7 @@ pub fn editor(ui: &mut Ui, t: &Theme, id: Id, text: &mut String, opts: &Options)
         look: &look,
         id,
         text: &shown,
+        base: 0,
         lines: &lines,
         galley: &galley,
         origin,
@@ -204,7 +212,7 @@ pub fn editor(ui: &mut Ui, t: &Theme, id: Id, text: &mut String, opts: &Options)
             edit = commands::auto_block(text, at);
         }
         if edit.is_none() {
-            let now = parse::parse(text, look.headings);
+            let now = parse::parse(text, true);
             edit = commands::drop_empty_marks(text, &now, at);
         }
         if let Some(e) = edit {
@@ -220,7 +228,7 @@ pub fn editor(ui: &mut Ui, t: &Theme, id: Id, text: &mut String, opts: &Options)
         sel = Some((if primary == secondary { at } else { secondary }, at));
     }
     if response.lost_focus() {
-        let now = parse::parse(text, look.headings);
+        let now = parse::parse(text, true);
         if let Some(e) = commands::drop_empty_marks(text, &now, usize::MAX) {
             *text = e.text;
             changed = true;
@@ -285,6 +293,11 @@ pub fn editor(ui: &mut Ui, t: &Theme, id: Id, text: &mut String, opts: &Options)
     }
 }
 
+/// Width of `s` in font `f`, for the table columns.
+pub fn measure(ui: &Ui, s: &str, f: &egui::FontId) -> f32 {
+    ui.fonts_mut(|fo| fo.layout_no_wrap(s.to_string(), f.clone(), egui::Color32::WHITE).size().x)
+}
+
 /// Runs a toolbar tool or shortcut. Link opens the url popover.
 fn run_tool(ctx: &egui::Context, id: Id, text: &mut String, tool: Tool, sel: Range<usize>, mem: &mut Mem, anchor: Option<Pos2>) {
     let e = match tool {
@@ -345,7 +358,7 @@ fn edit_key(ui: &Ui, text: &str, headings: bool, sel: Range<usize>) -> Option<Ed
     if !sel.is_empty() {
         return None;
     }
-    let lines = parse::parse(text, headings);
+    let lines = parse::parse(text, true);
     let at = sel.end;
     // Each key is taken only when the command applies, else the TextEdit handles it.
     let ev = |k: Key| pressed(ui, k, none);

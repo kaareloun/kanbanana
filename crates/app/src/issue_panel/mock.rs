@@ -2,7 +2,7 @@
 
 use model::{BoardData, Issue};
 
-use super::{DescMode, PanelAction, PanelState, composer, on_upload_progress};
+use super::{DescMode, PanelAction, PanelState, comments, composer, on_upload_progress};
 use crate::actions;
 
 /// WEB-214 description from design 05.
@@ -19,7 +19,8 @@ We handle both, and the second one flips the order back to paid.
 
 ![admin-order-4471.png](https://uploads.linear.app/mock/admin-order-4471.png)";
 
-/// Sets up the panel for a screenshot. `screen` is `panel`, `panel-comments` or `panel-edit`.
+/// Sets up the panel for a screenshot. `screen` is `panel`, `panel-comments`,
+/// `panel-comment-edit` or `panel-edit`.
 pub fn demo(state: &mut PanelState, issue: &Issue, _data: &BoardData, screen: &str) {
     state.issue_id = Some(issue.id.clone());
     state.reset_for(&issue.id);
@@ -33,6 +34,14 @@ pub fn demo(state: &mut PanelState, issue: &Issue, _data: &BoardData, screen: &s
                 "Pushed the fix. A refund now keeps the order in Refunded:",
                 Some("paste-0951.png"),
             );
+        }
+        "panel-comment-edit" => {
+            state.scroll_to_comments = true;
+            let list = comments::mock_comments().list;
+            if let Some(c) = list.iter().find(|c| c.id == comments::MOCK_OWN_TABLE) {
+                let caret = c.body.find(" in this order").unwrap_or(0);
+                comments::demo_edit(&mut state.comments, &issue.id, c, caret);
+            }
         }
         "panel-edit" => {
             let request_id = 9000;

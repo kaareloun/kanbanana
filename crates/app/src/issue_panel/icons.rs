@@ -11,7 +11,6 @@ use crate::theme::parts;
 pub enum Ic {
     Copy,
     External,
-    Pencil,
     Reply,
     Branch,
     Mr,
@@ -29,15 +28,11 @@ pub fn paint(p: &Painter, center: Pos2, ic: Ic, size: f32, c: Color32) {
     let line = |pts: &[(f32, f32)]| {
         p.add(Shape::line(pts.iter().map(|&(x, y)| pt(x, y)).collect(), st));
     };
-    let closed = |pts: &[(f32, f32)]| {
-        p.add(Shape::closed_line(pts.iter().map(|&(x, y)| pt(x, y)).collect(), st));
-    };
     let arc = |cx: f32, cy: f32, r: f32, a0: f32, a1: f32| {
         p.add(Shape::line(parts::arc(pt(cx, cy), r * k, a0, a1, 12), st));
     };
     let theme_icon = |i: parts::Icon| parts::icon(p, center, i, size, c);
     match ic {
-        Ic::Pencil => closed(&[(3.0, 13.0), (3.5, 10.5), (10.5, 3.5), (12.5, 5.5), (5.5, 12.5)]),
         Ic::Reply => {
             line(&[(6.0, 4.0), (2.5, 7.5), (6.0, 11.0)]);
             line(&[(2.5, 7.5), (9.5, 7.5)]);

@@ -15,7 +15,7 @@ use eframe::egui::{
 
 use super::Look;
 use super::layout::{self, CHECK_INDENT, CODE_GAP, LIST_INDENT};
-use super::parse::{Block, Image, Line, Mark};
+use super::parse::{self, Block, Image, Line, Mark};
 use crate::theme::parts::{self, Icon};
 use crate::theme::{Theme, W};
 
@@ -90,6 +90,9 @@ pub struct Ctx<'a> {
     pub look: &'a Look,
     pub id: Id,
     pub text: &'a str,
+    /// Byte offset in `text` where the galley text starts. The read-only view lays out
+    /// a comment in parts, one galley per part.
+    pub base: usize,
     pub lines: &'a [Line],
     pub galley: &'a Galley,
     /// Screen position of the galley origin.
@@ -104,7 +107,8 @@ pub struct Ctx<'a> {
 impl Ctx<'_> {
     /// The row rect of byte offset `b`, on screen.
     fn row(&self, b: usize) -> Rect {
-        let c = self.text[..b.min(self.text.len())].chars().count();
+        let b = b.clamp(self.base, self.text.len());
+        let c = self.text[self.base..b].chars().count();
         self.galley.pos_from_cursor(CCursor::new(c)).translate(self.origin.to_vec2())
     }
 }
@@ -151,15 +155,47 @@ pub fn paint(ui: &mut Ui, c: &Ctx, bg: ShapeIdx) -> Clicks {
                     image(ui, c, img, first.min.y);
                 }
             }
+            Block::Rule => {
+                let r = Rect::from_min_max(pos2(c.origin.x, cy - 0.5), pos2(c.origin.x + c.width, cy + 0.5));
+                p.rect_filled(r, CornerRadius::ZERO, t.hl_med);
+            }
             _ => {}
         }
         inline(ui, c, line, &mut below, &mut clicks);
+    }
+    for g in parse::tables(c.lines) {
+        table_borders(ui, c, g);
     }
     if let (Some(top), Some(last)) = (block_start, c.lines.last()) {
         below.push(code_block(t, c, top, c.row(last.range.end).max.y));
     }
     ui.painter().set(bg, Shape::Vec(below));
     clicks
+}
+
+/// Borders of an aligned table. A table too wide to align has none.
+fn table_borders(ui: &Ui, c: &Ctx, group: std::ops::Range<usize>) {
+    let wrap = c.galley.job.wrap.max_width;
+    let measure = |s: &str, f: &egui::FontId| super::measure(ui, s, f);
+    let Some(cols) = layout::table_columns(c.text, c.lines, group.clone(), c.t, c.look, wrap, &measure) else {
+        return;
+    };
+    let rows: Vec<&Line> = c.lines[group].iter().filter(|l| l.block != Block::TableSep).collect();
+    let (Some(first), Some(last)) = (rows.first(), rows.last()) else { return };
+    let x0 = c.origin.x;
+    let top = c.row(first.range.start).min.y;
+    let bottom = c.row(last.range.start).max.y;
+    let stroke = Stroke::new(1.0, c.t.hl_med);
+    let p = ui.painter();
+    let outer = Rect::from_min_max(pos2(x0, top), pos2(x0 + cols[cols.len() - 1], bottom));
+    p.rect_stroke(outer, CornerRadius::same(6), stroke, StrokeKind::Inside);
+    for x in &cols[1..cols.len() - 1] {
+        p.vline(x0 + x, top..=bottom, stroke);
+    }
+    for r in &rows[1..] {
+        let y = c.row(r.range.start).min.y;
+        p.hline(outer.x_range(), y, stroke);
+    }
 }
 
 fn code_block(t: &Theme, c: &Ctx, top: f32, bottom: f32) -> Shape {
@@ -190,9 +226,10 @@ fn inline(ui: &mut Ui, c: &Ctx, line: &Line, below: &mut Vec<Shape>, clicks: &mu
                 let right = if (a.min.y - b.min.y).abs() < 1.0 { b.min.x } else { c.origin.x + c.width };
                 let r = Rect::from_min_max(a.min, pos2(right, a.max.y));
                 let resp = ui.interact(r, c.id.with(("link", s.range.start)), Sense::click());
-                let resp = resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(&c.text[url.clone()]);
+                let target = parse::link_target(&c.text[url.clone()]);
+                let resp = resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(&target);
                 if resp.clicked() {
-                    clicks.open_url = Some(c.text[url.clone()].to_string());
+                    clicks.open_url = Some(target);
                 }
             }
             _ => {}

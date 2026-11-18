@@ -155,7 +155,11 @@ pub fn list_prefix(line: &str) -> Option<(ListKind, usize)> {
 /// Enter in a list item or quote: continues it on a new line. Enter on an empty item
 /// ends the list. Returns None when the editor inserts a plain line break.
 pub fn enter(text: &str, lines: &[Line], cursor: usize) -> Option<Edit> {
-    let l = &lines[line_at(lines, cursor)?];
+    let li = line_at(lines, cursor)?;
+    let l = &lines[li];
+    if let Block::TableRow(header) = l.block {
+        return Some(table_enter(text, lines, li, header));
+    }
     if !(l.is_list() || l.block == Block::Quote) || cursor < l.marker.end {
         return None;
     }
@@ -174,6 +178,15 @@ pub fn enter(text: &str, lines: &[Line], cursor: usize) -> Option<Edit> {
     };
     let insert = format!("\n{next}");
     Some(Edit::caret(splice(text, cursor..cursor, &insert), cursor + insert.len()))
+}
+
+/// Enter in a table row adds an empty row below it, or below the separator for the
+/// header, and puts the caret in its first cell. Splitting a row would break the table.
+fn table_enter(text: &str, lines: &[Line], li: usize, header: bool) -> Edit {
+    let after = if header && lines.get(li + 1).is_some_and(|l| l.block == Block::TableSep) { li + 1 } else { li };
+    let at = lines[after].range.end;
+    let row = format!("\n|{}", "  |".repeat(lines[li].cells.len().max(1)));
+    Edit::caret(splice(text, at..at, &row), at + 3)
 }
 
 /// Backspace without a selection. It removes the visible character before the caret and
@@ -197,6 +210,15 @@ pub fn backspace(text: &str, lines: &[Line], cursor: usize) -> Option<Edit> {
             // block goes into it. At the start of the block it does nothing.
             Block::Fence if l.block == Block::Code => return Some(Edit::caret(text.to_string(), p)),
             Block::Fence if li >= 2 => return Some(Edit::caret(text.to_string(), lines[li - 2].range.end)),
+            Block::Rule => {
+                let r = above.range.start..above.range.end + 1;
+                return Some(Edit::caret(splice(text, r, ""), above.range.start));
+            }
+            // Joining two table rows breaks the table. The caret goes to the row above.
+            Block::TableSep if li >= 2 => return Some(Edit::caret(text.to_string(), table_end(&lines[li - 2]))),
+            Block::TableRow(_) if l.block == Block::TableRow(false) => {
+                return Some(Edit::caret(text.to_string(), table_end(above)));
+            }
             _ => {}
         }
     }
@@ -224,6 +246,7 @@ pub fn delete(text: &str, lines: &[Line], cursor: usize) -> Option<Edit> {
         let below = lines.get(li + 1)?;
         return match below.block {
             Block::Fence => None,
+            Block::TableSep | Block::TableRow(_) if l.is_table() => Some(Edit::caret(text.to_string(), cursor)),
             Block::Image => {
                 let r = below.range.start - 1..below.range.end;
                 Some(Edit::caret(splice(text, r, ""), cursor))
@@ -235,6 +258,11 @@ pub fn delete(text: &str, lines: &[Line], cursor: usize) -> Option<Edit> {
     let start = if escaped(text, &hid, p, end) { p - 1 } else { p };
     let caret = cursor.min(start);
     Some(Edit::caret(splice(text, start..end, ""), caret))
+}
+
+/// The end of the last cell text of a table row.
+fn table_end(l: &Line) -> usize {
+    l.cells.last().map_or(l.range.end, |c| c.end)
 }
 
 /// Moves `p` left over inline marks that end at it.
@@ -283,10 +311,12 @@ pub fn toggle_check(text: &str, line: &Line) -> Option<String> {
 /// Removes empty mark pairs such as `****`, which the shortcuts leave when the user
 /// types nothing into them. A pair with the caret between its marks stays.
 pub fn drop_empty_marks(text: &str, lines: &[Line], cursor: usize) -> Option<Edit> {
+    const PAIRS: [&str; 6] = ["**", "__", "~~", "`", "*", "_"];
     for l in lines {
         for w in l.spans.windows(2) {
             let (a, b) = (&w[0], &w[1]);
-            let pair = a.range.end == b.range.start && text[a.range.clone()] == text[b.range.clone()];
+            let m = &text[a.range.clone()];
+            let pair = a.range.end == b.range.start && m == &text[b.range.clone()] && PAIRS.contains(&m);
             if a.mark == super::parse::Mark::Hidden && b.mark == super::parse::Mark::Hidden && pair && cursor != a.range.end {
                 let r = a.range.start..b.range.end;
                 let caret = if cursor >= r.end { cursor - r.len() } else { cursor.min(r.start) };
@@ -412,6 +442,35 @@ mod tests {
         assert_eq!(run(delete, "a\n![x](u)", 1), Some(("a".into(), 1)));
         assert_eq!(run(delete, "**ab**", 0), Some(("**b**".into(), 0)));
         assert_eq!(run(delete, "a", 1), None);
+    }
+
+    #[test]
+    fn enter_in_a_table_adds_a_row() {
+        let t = "| a | b |\n| - | - |\n| 1 | 2 |";
+        assert_eq!(run(enter, t, 2), Some(("| a | b |\n| - | - |\n|  |  |\n| 1 | 2 |".into(), 22)));
+        assert_eq!(run(enter, t, 24), Some((format!("{t}\n|  |  |"), 32)));
+        // The caret lands in the first cell of the new row.
+        let (s, at) = run(enter, t, 24).unwrap();
+        let lines = parse(&s, true);
+        assert_eq!(lines[3].block, Block::TableRow(false));
+        assert_eq!(lines[3].cells[0], at..at);
+    }
+
+    #[test]
+    fn backspace_and_delete_keep_tables_whole() {
+        let t = "| a | b |\n| - | - |\n| 1 | 2 |\n| 3 | 4 |";
+        // Start of the first body row: the caret goes to the end of the header.
+        assert_eq!(run(backspace, t, 22), Some((t.to_string(), 7)));
+        // Start of the second body row: the end of the row above.
+        assert_eq!(run(backspace, t, 32), Some((t.to_string(), 27)));
+        assert_eq!(run(delete, t, 27), Some((t.to_string(), 27)));
+        assert_eq!(run(backspace, "a\n---\nb", 6), Some(("a\nb".into(), 2)));
+    }
+
+    #[test]
+    fn keeps_html_pairs() {
+        let t = "a<b><b>c";
+        assert_eq!(drop_empty_marks(t, &parse(t, true), 0), None);
     }
 
     #[test]

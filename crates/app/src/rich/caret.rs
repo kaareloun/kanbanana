@@ -1,6 +1,6 @@
 //! Caret rules: the caret never stops on hidden characters.
 
-use super::parse::{Hide, Line, hidden, line_at};
+use super::parse::{Block, Hide, Line, hidden, line_at};
 
 /// Moves byte offset `cur` out of hidden text. `prev` is the caret of the last frame, so
 /// the caret leaves a hidden range in the direction the user moved.
@@ -21,6 +21,22 @@ fn step(lines: &[Line], prev: usize, cur: usize) -> usize {
     let forward = cur >= prev;
     let Some(li) = line_at(lines, cur) else { return cur };
     let line = &lines[li];
+    // The caret stays between the outer pipes of a table row, so typed text lands in a
+    // cell. Right from the last cell and left from the first cell leave the row.
+    if let (Block::TableRow(_), Some(first), Some(last)) = (line.block, line.cells.first(), line.cells.last()) {
+        if cur > last.end {
+            return match lines.get(li + 1) {
+                Some(n) if forward && prev == last.end => n.range.start,
+                _ => last.end,
+            };
+        }
+        if cur < first.start {
+            return match li.checked_sub(1) {
+                Some(u) if !forward && prev == first.start => lines[u].range.end,
+                _ => first.start,
+            };
+        }
+    }
     for (r, kind) in hidden(std::slice::from_ref(line)) {
         match kind {
             Hide::Line => {
@@ -98,6 +114,19 @@ mod tests {
         let fenced = "a\n```\ncode\n```\nb";
         assert_eq!(at(fenced, 1, 2), 6, "into the first code line");
         assert_eq!(at(fenced, 15, 14), 10, "back to the last code line");
+    }
+
+    #[test]
+    fn stays_inside_table_rows() {
+        let t = "| a | b |\n| - | - |\n| 1 | 2 |";
+        // A click before the row or after it lands in the first or last cell.
+        assert_eq!(at(t, 25, 20), 22);
+        assert_eq!(at(t, 22, 29), 27);
+        assert_eq!(at(t, 0, 9), 7);
+        // Right from the last header cell skips the separator into the body.
+        assert_eq!(at(t, 7, 8), 22);
+        // Left from the first body cell goes to the end of the header.
+        assert_eq!(at(t, 22, 21), 7);
     }
 
     #[test]
