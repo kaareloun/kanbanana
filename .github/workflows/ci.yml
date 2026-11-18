@@ -1,8 +1,8 @@
 name: ci
 
-# Tags and the "chore: release vX" commit are built and tested by release.yml. Running CI
-# on them too doubles the macOS jobs, and the free macOS runners then queue long enough
-# for GitHub to cancel the release build.
+# Tags and the "chore: release vX" commit are built and tested by release.yml.
+# CI runs on Linux only. Free macOS runners are scarce, so they stay free for releases,
+# which still build both macOS targets.
 on:
   push:
     branches: [main]
@@ -11,17 +11,12 @@ on:
 jobs:
   build:
     if: "!startsWith(github.event.head_commit.message, 'chore: release v')"
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Linux libraries for eframe
-        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev
       - run: cargo test --workspace
       - run: cargo build --release -p kanbanana
