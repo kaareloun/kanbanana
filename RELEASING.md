@@ -12,12 +12,13 @@ pushes. The tag starts `.github/workflows/release.yml`, which:
 1. checks that the tag matches the version in `Cargo.toml`;
 2. builds `kanbanana` for Linux x86_64, macOS Apple silicon and macOS Intel;
 3. publishes the GitHub release with the archives, their checksums and generated notes;
-4. writes `Formula/kanbanana.rb` (Homebrew) and updates `packaging/aur/PKGBUILD`, and
-   commits both to `main`;
-5. pushes the package to the AUR (`kanbanana`), with fresh checksums and `.SRCINFO`.
+4. writes `Formula/kanbanana.rb` (Homebrew), updates `packaging/aur/PKGBUILD` and
+   `packaging/aur-bin/PKGBUILD`, and commits them to `main`;
+5. pushes both AUR packages, with fresh checksums and `.SRCINFO`: `kanbanana` (builds
+   from source) and `kanbanana-bin` (the prebuilt Linux archive from the release).
 
 Follow it with `gh run watch`. Everything lives in this repo: the repo is its own Homebrew
-tap, and the AUR package is pushed from here.
+tap, and the AUR packages are pushed from here.
 
 ## One-time setup
 
@@ -34,11 +35,13 @@ rm /tmp/kanbanana-aur /tmp/kanbanana-aur.pub
 Paste the printed public key into <https://aur.archlinux.org> under My Account, SSH Public
 Key (one key per line, next to your own), and save.
 
-The first push creates the `kanbanana` package on the AUR under your account.
+The first push of each name creates the `kanbanana` and `kanbanana-bin` packages on the
+AUR under your account.
 
 ## How users install
 
-- Arch: `yay -S kanbanana` (or `paru -S kanbanana`). Builds from the release source.
+- Arch: `yay -S kanbanana-bin` (prebuilt, fast) or `yay -S kanbanana` (builds from the
+  release source).
 - macOS and Linux with Homebrew:
 
   ```

@@ -45,11 +45,19 @@ Unofficial. Not made by or affiliated with Linear.
 
 ## Install
 
-**Arch Linux** (AUR):
+**Arch Linux** (AUR), prebuilt binary, installs in seconds:
+
+```
+yay -S kanbanana-bin
+```
+
+or built from source on your machine (needs Rust, takes a few minutes):
 
 ```
 yay -S kanbanana
 ```
+
+The two packages conflict, so install one of them.
 
 **macOS and Linux** (Homebrew, this repo is the tap):
 
