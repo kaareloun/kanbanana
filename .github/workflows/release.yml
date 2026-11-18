@@ -63,7 +63,8 @@ jobs:
           name="kanbanana-v${{ needs.check.outputs.version }}-${{ matrix.target }}"
           mkdir "$name"
           cp "target/${{ matrix.target }}/release/kanbanana" LICENSE README.md \
-            assets/kanbanana.desktop assets/brand/icon.png "$name/"
+            assets/kanbanana.desktop assets/brand/icon.png assets/brand/icon.svg "$name/"
+          cp -r assets/brand/icons "$name/icons"
           tar czf "$name.tar.gz" "$name"
           shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
       - uses: actions/upload-artifact@v7

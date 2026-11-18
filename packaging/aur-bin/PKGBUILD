@@ -20,7 +20,11 @@ package() {
   cd "kanbanana-v$pkgver-x86_64-unknown-linux-gnu"
   install -Dm755 kanbanana "$pkgdir/usr/bin/kanbanana"
   install -Dm644 kanbanana.desktop "$pkgdir/usr/share/applications/kanbanana.desktop"
-  install -Dm644 icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/kanbanana.png"
+  # Launchers pick the size they need: ship every common size and the SVG.
+  for s in 32 48 64 128 256 512; do
+    install -Dm644 "icons/kanbanana-$s.png" "$pkgdir/usr/share/icons/hicolor/${s}x${s}/apps/kanbanana.png"
+  done
+  install -Dm644 icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/kanbanana.svg"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 }
