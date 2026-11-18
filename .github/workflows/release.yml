@@ -39,37 +39,40 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            targets: x86_64-unknown-linux-gnu
+            rust_targets: x86_64-unknown-linux-gnu
+          # Both macOS targets build in one job. Free macOS runners are scarce, and a second
+          # macOS job tends to wait in the queue until GitHub cancels it.
           - os: macos-latest
-            target: aarch64-apple-darwin
-          # Built on the Apple silicon runner too: Intel runners are being retired.
-          - os: macos-latest
-            target: x86_64-apple-darwin
+            targets: aarch64-apple-darwin x86_64-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.rust_targets }}
       - uses: Swatinem/rust-cache@v2.9.3
         with:
-          key: ${{ matrix.target }}
+          key: ${{ matrix.os }}
       - name: Linux libraries for eframe
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev
-      - run: cargo build --release --locked -p kanbanana --target ${{ matrix.target }}
-      - name: Package
+      - name: Build and package
         run: |
-          name="kanbanana-v${{ needs.check.outputs.version }}-${{ matrix.target }}"
-          mkdir "$name"
-          cp "target/${{ matrix.target }}/release/kanbanana" LICENSE README.md \
-            assets/kanbanana.desktop assets/brand/icon.png assets/brand/icon.svg "$name/"
-          cp -r assets/brand/icons "$name/icons"
-          tar czf "$name.tar.gz" "$name"
-          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+          for target in ${{ matrix.targets }}; do
+            cargo build --release --locked -p kanbanana --target "$target"
+            name="kanbanana-v${{ needs.check.outputs.version }}-$target"
+            mkdir "$name"
+            cp "target/$target/release/kanbanana" LICENSE README.md \
+              assets/kanbanana.desktop assets/brand/icon.png assets/brand/icon.svg "$name/"
+            cp -r assets/brand/icons "$name/icons"
+            tar czf "$name.tar.gz" "$name"
+            shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+          done
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.target }}
+          name: ${{ matrix.os }}
           path: kanbanana-*.tar.gz*
           if-no-files-found: error
 
